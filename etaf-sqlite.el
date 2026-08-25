@@ -299,6 +299,17 @@ validated once and never comes from a runtime query."
                        (and (listp payload) (assoc key payload))))
           (push (cons column (etaf-sqlite--record-value payload key)) result))))))
 
+(defun etaf-sqlite--mutation-result (connection operation value)
+  "Return a normalized mutation result for OPERATION and VALUE from CONNECTION.
+
+The result keeps source-specific details behind the Data contract while
+exposing the inserted identity and affected row count to application code."
+  (list :operation operation
+        :id (when (eq operation 'insert)
+              (caar (sqlite-select connection "SELECT last_insert_rowid()")))
+        :changes (caar (sqlite-select connection "SELECT changes()"))
+        :value value))
+
 (defun etaf-sqlite--mutate (database operation payload)
   "Apply one Data mutation OPERATION with PAYLOAD to DATABASE."
   (let* ((table (etaf-sqlite--database-table database))
@@ -314,7 +325,8 @@ validated once and never comes from a runtime query."
        (etaf-sqlite--transaction
         connection
         (lambda (transaction-connection)
-          (pcase operation
+          (let ((value
+                 (pcase operation
             ('insert
              (let* ((columns
                      (cl-remove-if
@@ -391,15 +403,19 @@ validated once and never comes from a runtime query."
             (_
              (signal 'etaf-sqlite-error
                      (list (format "Unsupported SQLite mutation: %S"
-                                   operation)))))))))))
+                                   operation)))))))
+            (etaf-sqlite--mutation-result
+             transaction-connection operation value))))))))
 
 ;;;###autoload
 (defun etaf-sqlite-source (database)
   "Return an `etaf-data-source' backed by DATABASE.
 
 The source accepts equality plist/alist queries and supports `insert',
-`replace', `update', and `delete' mutations.  Every operation uses a short
-connection; controllers remain the owner of reactive state and lifecycle."
+`replace', `update', and `delete' mutations.  Mutation results include the
+operation, affected row count, and inserted identity when applicable.  Every
+operation uses a short connection; controllers remain the owner of reactive
+state and lifecycle."
   (unless (etaf-sqlite--database-p database)
     (signal 'wrong-type-argument
             (list 'etaf-sqlite-database-p database)))

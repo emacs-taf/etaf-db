@@ -60,8 +60,12 @@
                                             :page-size 20 :auto-load t)))
       (unwind-protect
           (progn
-            (etaf-data-mutate controller 'insert
-                               '(:id 3 :name "Alan" :score 30))
+            (let ((result (etaf-data-mutate
+                           controller 'insert
+                           '(:id 3 :name "Alan" :score 30))))
+              (should (equal 'insert (plist-get result :operation)))
+              (should (= 3 (plist-get result :id)))
+              (should (= 1 (plist-get result :changes))))
             (should (= (etaf-value (etaf-data-total controller)) 3))
             (etaf-data-mutate controller 'update
                                '(:id 3 :name "Alan Turing" :score 31))
