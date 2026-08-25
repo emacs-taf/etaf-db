@@ -264,7 +264,7 @@ validated once and never comes from a runtime query."
                         (etaf-sqlite--table-columns table)))
          (table-name (etaf-sqlite--physical-name
                       (etaf-sqlite--table-id table) "table"))
-         (order (when-let ((primary (etaf-sqlite--table-primary-key table)))
+         (order (when-let* ((primary (etaf-sqlite--table-primary-key table)))
                   (format " ORDER BY %s"
                           (etaf-sqlite--identifier
                            (etaf-sqlite--column-sql-name
