@@ -81,6 +81,15 @@
             (should (= (etaf-value (etaf-data-total controller)) 2)))
         (etaf-data-stop controller)))))
 
+(ert-deftest etaf-sqlite-source-declares-provider-identity ()
+  "Expose SQLite identity without depending on ETAF observer internals."
+  (etaf-sqlite-test--with-database (database)
+    (let ((source (etaf-sqlite-source database)))
+      (should (eq 'sqlite (plist-get source :provider)))
+      (should (functionp (plist-get source :load)))
+      (should (functionp (plist-get source :mutate)))
+      (should-not (plist-member source :dispose)))))
+
 (provide 'etaf-sqlite-tests)
 
 ;;; etaf-sqlite-tests.el ends here

@@ -421,6 +421,7 @@ state and lifecycle."
             (list 'etaf-sqlite-database-p database)))
   (etaf-data-source
    :name 'etaf-sqlite
+   :provider 'sqlite
    :load (lambda (query page page-size)
            (etaf-sqlite--select-items database query page page-size))
    :mutate (lambda (operation payload)
