@@ -16,6 +16,10 @@
   (etaf-data-controller source :auto-load t))
 ```
 
+默认 source 仍只暴露兼容的 `:mutate` callback。需要明确的提交/回滚确定性
+和只读 reconciliation 时，显式使用 `(etaf-sqlite-source database
+:mutate-v2 t)` 开启增量 wrapper。
+
 其他数据库、REST、文件和 ORM 应在各自的具体数据源包中实现同一个 source capability；它们不进入 ETAF core，也不创建笼统的 `etaf-adapters` 层。
 
 在该目录运行 `make check EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs`。
