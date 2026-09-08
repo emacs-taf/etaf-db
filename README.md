@@ -13,8 +13,13 @@
        (database (etaf-sqlite-database "~/items.sqlite" table))
        (source (etaf-sqlite-source database)))
   (etaf-sqlite-initialize database)
-  (etaf-data-controller source :auto-load t))
+(etaf-data-controller source :auto-load t))
 ```
+
+The source keeps the legacy `:mutate` callback by default.  The additive
+commit-certified wrapper is opt-in: use `(etaf-sqlite-source database
+:mutate-v2 t)` when a controller needs explicit commit/rollback certainty and
+read-only reconciliation.
 
 Other databases, REST services, files, and ORMs should implement the same source capability in their own packages; they do not belong in ETAF core or in a generic `etaf-adapters` layer.
 

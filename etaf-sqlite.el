@@ -25,6 +25,19 @@
   'etaf-sqlite-error)
 (define-error 'etaf-sqlite-unavailable "SQLite is unavailable"
   'etaf-sqlite-error)
+(define-error 'etaf-sqlite-commit-unknown
+  "SQLite commit outcome is unknown"
+  'etaf-sqlite-error)
+
+;; Opaque tokens let Data reconcile a committed external mutation without
+;; coupling itself to SQLite connection or transaction objects.
+(defvar etaf-sqlite--reconciliation-sequence 0)
+(defvar etaf-sqlite--mutation-active nil)
+(defvar etaf-sqlite--mutation-phase nil)
+
+(defun etaf-sqlite--reconciliation-token ()
+  "Return a fresh opaque token for one SQLite mutation outcome."
+  (list :etaf-sqlite (cl-incf etaf-sqlite--reconciliation-sequence)))
 
 (cl-defstruct (etaf-sqlite--column
                (:constructor etaf-sqlite--column-create))
@@ -143,7 +156,12 @@ validated once and never comes from a runtime query."
     (signal 'etaf-sqlite-unavailable nil)))
 
 (defun etaf-sqlite--call (database function)
-  "Call FUNCTION with a short-lived connection for DATABASE."
+  "Call FUNCTION with a short-lived connection for DATABASE.
+
+Keep a cleanup failure after a successful mutation conservative: the write may
+already have committed even though closing the connection signalled.  When the
+body already failed, preserve that primary condition so transaction certainty
+is determined by the transaction phase rather than by cleanup noise."
   (etaf-sqlite--require-available)
   (let* ((file (etaf-sqlite--database-file database))
          (directory (file-name-directory file))
@@ -151,20 +169,67 @@ validated once and never comes from a runtime query."
     (when directory
       (make-directory directory t))
     (setq connection (sqlite-open file))
-    (unwind-protect
-        (funcall function connection)
-      (when (sqlitep connection)
-        (sqlite-close connection)))))
+    (let (result body-condition close-condition)
+      ;; Keep the connection cleanup on all non-local exits, including a
+      ;; caller's `throw'.  Error and quit conditions are captured so cleanup
+      ;; failures can be classified without masking the primary condition.
+      (unwind-protect
+          (condition-case err
+              (setq result (funcall function connection))
+            ((error quit)
+             (setq body-condition err)))
+        (when (sqlitep connection)
+          (condition-case err
+              (sqlite-close connection)
+            ((error quit)
+             (setq close-condition err))))
+        )
+      (when (and close-condition
+                 etaf-sqlite--mutation-active
+                 (memq etaf-sqlite--mutation-phase '(committed committing))
+                 (not (and body-condition
+                           (eq (car body-condition)
+                               'etaf-sqlite-commit-unknown))))
+        (setq body-condition
+              (list 'etaf-sqlite-commit-unknown
+                    (list :failure-phase 'close :error close-condition))))
+      (when (and close-condition (not body-condition))
+        (setq body-condition close-condition))
+      (if body-condition
+          (signal (car body-condition) (cdr body-condition))
+        result))))
 
 (defun etaf-sqlite--transaction (connection function)
   "Run FUNCTION in a transaction on CONNECTION and return its value."
   (sqlite-transaction connection)
-  (condition-case err
-      (prog1 (funcall function connection)
-        (sqlite-commit connection))
-    (error
-     (sqlite-rollback connection)
-     (signal (car err) (cdr err)))))
+  (let ((value
+         (condition-case body-err
+             (funcall function connection)
+           ((error quit)
+            (setq etaf-sqlite--mutation-phase 'rolling-back)
+            (let ((rollback-err
+                   (condition-case rollback-condition
+                       (progn (sqlite-rollback connection) nil)
+                     ((error quit) rollback-condition))))
+              (if rollback-err
+                  (progn
+                    (setq etaf-sqlite--mutation-phase 'unknown)
+                    (signal 'etaf-sqlite-commit-unknown
+                            (list :failure-phase 'rollback
+                                  :error body-err
+                                  :rollback-error rollback-err)))
+                (setq etaf-sqlite--mutation-phase 'rolled-back)
+                (signal (car body-err) (cdr body-err))))))))
+    (condition-case commit-err
+        (progn
+          (setq etaf-sqlite--mutation-phase 'committing)
+          (sqlite-commit connection)
+          (setq etaf-sqlite--mutation-phase 'committed)
+          value)
+      ((error quit)
+       (setq etaf-sqlite--mutation-phase 'unknown)
+       (signal 'etaf-sqlite-commit-unknown
+               (list :failure-phase 'commit :error commit-err))))))
 
 (defun etaf-sqlite--sql-type (type)
   "Return SQLite DDL type for TYPE."
@@ -319,9 +384,11 @@ exposing the inserted identity and affected row count to application code."
     (unless primary
       (signal 'etaf-sqlite-schema-error
               (list "Mutations require a primary key")))
-    (etaf-sqlite--call
-     database
-     (lambda (connection)
+    (let ((etaf-sqlite--mutation-active t)
+          (etaf-sqlite--mutation-phase 'body))
+      (etaf-sqlite--call
+       database
+       (lambda (connection)
        (etaf-sqlite--transaction
         connection
         (lambda (transaction-connection)
@@ -405,27 +472,67 @@ exposing the inserted identity and affected row count to application code."
                      (list (format "Unsupported SQLite mutation: %S"
                                    operation)))))))
             (etaf-sqlite--mutation-result
-             transaction-connection operation value))))))))
+              transaction-connection operation value)))))))))
+
+(defun etaf-sqlite--mutate-v2 (database operation payload)
+  "Return a commit-certified outcome for DATABASE mutation OPERATION and PAYLOAD.
+
+This optional capability deliberately does not replace the v1 `:mutate'
+callback.  Successful transactions return `:certainty committed' and a
+reconciliation token.  A body failure is `:certainty rolled-back' only when
+rollback succeeds; commit, rollback, or close uncertainty is returned as
+`:certainty external-unknown' with the original condition in `:error'."
+  (let ((token (etaf-sqlite--reconciliation-token)))
+    (condition-case err
+        (let ((result (etaf-sqlite--mutate database operation payload)))
+          (list :certainty 'committed
+                :external-commit-certainty 'committed
+                :operation operation
+                :result result
+                :mutation-result result
+                :reconciliation-token token))
+      ((error quit)
+       (list :certainty (if (eq (car err) 'etaf-sqlite-commit-unknown)
+                            'external-unknown
+                          'rolled-back)
+             :external-commit-certainty
+             (if (eq (car err) 'etaf-sqlite-commit-unknown)
+                 'external-unknown
+               'rolled-back)
+             :operation operation
+             :error err
+             :reconciliation-token token)))))
 
 ;;;###autoload
-(defun etaf-sqlite-source (database)
+(cl-defun etaf-sqlite-source (database &key mutate-v2)
   "Return an `etaf-data-source' backed by DATABASE.
 
 The source accepts equality plist/alist queries and supports `insert',
 `replace', `update', and `delete' mutations.  Mutation results include the
 operation, affected row count, and inserted identity when applicable.  Every
 operation uses a short connection; controllers remain the owner of reactive
-state and lifecycle."
+state and lifecycle.  The legacy `:mutate' capability is exposed by default.
+When MUTATE-V2 is non-nil, add the opt-in `:mutate-v2' capability that returns
+explicit commit/rollback certainty and an opaque reconciliation token."
   (unless (etaf-sqlite--database-p database)
     (signal 'wrong-type-argument
             (list 'etaf-sqlite-database-p database)))
-  (etaf-data-source
-   :name 'etaf-sqlite
-   :provider 'sqlite
-   :load (lambda (query page page-size)
-           (etaf-sqlite--select-items database query page page-size))
-   :mutate (lambda (operation payload)
-             (etaf-sqlite--mutate database operation payload))))
+  (let ((capabilities
+         (list :name 'etaf-sqlite
+               :provider 'sqlite
+               :load (lambda (query page page-size)
+                       (etaf-sqlite--select-items database query page page-size))
+               :mutate (lambda (operation payload)
+                         (etaf-sqlite--mutate database operation payload)))))
+    ;; Keep the typed wrapper opt-in.  The M4a additive path must not silently
+    ;; change existing SQLite controllers from the v1 callback contract.
+    (when mutate-v2
+      (setq capabilities
+            (append capabilities
+                    (list :mutate-v2
+                          (lambda (operation payload)
+                            (etaf-sqlite--mutate-v2 database operation payload))))))
+    (apply #'etaf-data-source capabilities)))
 
 (provide 'etaf-sqlite)
 
