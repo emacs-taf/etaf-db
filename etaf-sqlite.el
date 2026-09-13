@@ -3,537 +3,82 @@
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (etaf "0.1.0"))
+;; Package-Requires: ((emacs "29.1") (etaf "0.2.1"))
 ;; URL: https://github.com/ginqi7/etaf-sqlite
 
 ;;; Commentary:
 
-;; This package adapts Emacs' built-in SQLite API to the small capability
-;; contract owned by `etaf-data'.  It is intentionally a source adapter, not a
-;; second Data controller and not a general ORM.  Other storage systems can
-;; implement the same `etaf-data-source' callbacks without changing ETAF.
+;; Public API
+;;
+;; Load this package with (require 'etaf-sqlite) after adding the repository
+;; root to load-path.
+;; Only the interfaces listed below are supported for use by other packages.
+;; All unlisted symbols and implementation features are internal, including
+;; names without a double hyphen. Do not require files below lisp/ from consumers.
+;; This Commentary is the authoritative export list; implementations and precise
+;; docstrings remain beside their definitions. The manual contains workflows.
+;;
+;; Function: etaf-sqlite-column (id sql-name &key (type 'any) nullable primary)
+;;;###autoload (autoload 'etaf-sqlite-column "etaf-sqlite" nil nil)
+;; Declare a SQLite column with semantic ID and physical SQL-NAME.
+;;
+;; TYPE is one of `integer', `real', `text', `blob', or `any'.  NULLABLE allows
+;; SQL NULL values.  PRIMARY marks the table identity column.  SQL-NAME is
+;; validated once and never comes from a runtime query.
+;;
+;; Error: etaf-sqlite-commit-unknown
+;; SQLite commit outcome is unknown
+;; Catch this condition with condition-case; failed calls do not return a value.
+;;
+;; Function: etaf-sqlite-database (file table)
+;;;###autoload (autoload 'etaf-sqlite-database "etaf-sqlite" nil nil)
+;; Describe SQLite FILE using typed TABLE metadata.
+;;
+;; Error: etaf-sqlite-error
+;; Invalid ETAF SQLite operation
+;; Catch this condition with condition-case; failed calls do not return a value.
+;;
+;; Function: etaf-sqlite-initialize (database)
+;;;###autoload (autoload 'etaf-sqlite-initialize "etaf-sqlite" nil nil)
+;; Create DATABASE's table if it does not exist and return DATABASE.
+;;
+;; Error: etaf-sqlite-schema-error
+;; Invalid ETAF SQLite schema
+;; Catch this condition with condition-case; failed calls do not return a value.
+;;
+;; Function: etaf-sqlite-source (database &key mutate-v2)
+;;;###autoload (autoload 'etaf-sqlite-source "etaf-sqlite" nil nil)
+;; Return an `etaf-data-source' backed by DATABASE.
+;;
+;; The source accepts equality plist/alist queries and supports `insert',
+;; `replace', `update', and `delete' mutations.  Mutation results include the
+;; operation, affected row count, and inserted identity when applicable.  Every
+;; operation uses a short connection; controllers remain the owner of reactive
+;; state and lifecycle.  The legacy `:mutate' capability is exposed by default.
+;; When MUTATE-V2 is non-nil, add the opt-in `:mutate-v2' capability that returns
+;; explicit commit/rollback certainty and an opaque reconciliation token.
+;;
+;; Function: etaf-sqlite-table (id columns &optional primary-key)
+;;;###autoload (autoload 'etaf-sqlite-table "etaf-sqlite" nil nil)
+;; Declare table ID from COLUMNS and optional PRIMARY-KEY semantic ID.
+;;
+;; Error: etaf-sqlite-unavailable
+;; SQLite is unavailable
+;; Catch this condition with condition-case; failed calls do not return a value.
+;;
 
 ;;; Code:
 
-(require 'cl-lib)
-(require 'subr-x)
-(require 'sqlite)
-(require 'etaf-data)
-
-(define-error 'etaf-sqlite-error "Invalid ETAF SQLite operation")
-(define-error 'etaf-sqlite-schema-error "Invalid ETAF SQLite schema"
-  'etaf-sqlite-error)
-(define-error 'etaf-sqlite-unavailable "SQLite is unavailable"
-  'etaf-sqlite-error)
-(define-error 'etaf-sqlite-commit-unknown
-  "SQLite commit outcome is unknown"
-  'etaf-sqlite-error)
-
-;; Opaque tokens let Data reconcile a committed external mutation without
-;; coupling itself to SQLite connection or transaction objects.
-(defvar etaf-sqlite--reconciliation-sequence 0)
-(defvar etaf-sqlite--mutation-active nil)
-(defvar etaf-sqlite--mutation-phase nil)
-
-(defun etaf-sqlite--reconciliation-token ()
-  "Return a fresh opaque token for one SQLite mutation outcome."
-  (list :etaf-sqlite (cl-incf etaf-sqlite--reconciliation-sequence)))
-
-(cl-defstruct (etaf-sqlite--column
-               (:constructor etaf-sqlite--column-create))
-  id sql-name type nullable primary)
-
-(cl-defstruct (etaf-sqlite--table
-               (:constructor etaf-sqlite--table-create))
-  id columns primary-key index)
-
-(cl-defstruct (etaf-sqlite--database
-               (:constructor etaf-sqlite--database-create))
-  file table)
-
-(defconst etaf-sqlite--types
-  '(integer real text blob any)
-  "Supported SQLite declaration types.")
-
-(defun etaf-sqlite--identifier-p (value)
-  "Return non-nil when VALUE is a safe unquoted SQL identifier."
-  (and (stringp value)
-       (string-match-p "\\`[A-Za-z_][A-Za-z0-9_]*\\'" value)))
-
-(defun etaf-sqlite--identifier (value kind)
-  "Return quoted SQL identifier VALUE for KIND or signal an error."
-  (unless (etaf-sqlite--identifier-p value)
-    (signal 'etaf-sqlite-schema-error
-            (list (format "Unsafe SQLite %s identifier: %S" kind value))))
-  (format "\"%s\"" value))
-
-(defun etaf-sqlite--physical-name (value kind)
-  "Return the SQL name for semantic VALUE of KIND."
-  (etaf-sqlite--identifier
-   (cond
-    ((stringp value) value)
-    ((symbolp value) (symbol-name value))
-    (t (signal 'etaf-sqlite-schema-error
-              (list (format "SQLite %s must be a symbol or string: %S"
-                            kind value)))))
-   kind))
-
-(defun etaf-sqlite--scalar-id-p (value)
-  "Return non-nil when VALUE can identify a schema field."
-  (and value (or (symbolp value) (stringp value) (integerp value))))
-
 ;;;###autoload
-(cl-defun etaf-sqlite-column
-    (id sql-name &key (type 'any) nullable primary)
-  "Declare a SQLite column with semantic ID and physical SQL-NAME.
+(eval-and-compile
+  (add-to-list 'load-path
+               (expand-file-name "lisp"
+                                 (file-name-directory
+                                  (or load-file-name
+                                      (bound-and-true-p byte-compile-current-file)
+                                      buffer-file-name)))))
 
-TYPE is one of `integer', `real', `text', `blob', or `any'.  NULLABLE allows
-SQL NULL values.  PRIMARY marks the table identity column.  SQL-NAME is
-validated once and never comes from a runtime query."
-  (unless (etaf-sqlite--scalar-id-p id)
-    (signal 'etaf-sqlite-schema-error
-            (list (format "Column ID must be a stable scalar: %S" id))))
-  (unless (etaf-sqlite--identifier-p sql-name)
-    (signal 'etaf-sqlite-schema-error
-            (list (format "Invalid SQLite column name: %S" sql-name))))
-  (unless (memq type etaf-sqlite--types)
-    (signal 'etaf-sqlite-schema-error
-            (list (format "Unsupported SQLite column type: %S" type))))
-  (etaf-sqlite--column-create
-   :id id :sql-name sql-name :type type
-   :nullable (and nullable t) :primary (and primary t)))
-
-(defun etaf-sqlite--column-index (columns)
-  "Return an equal-tested index for COLUMNS."
-  (unless (and (proper-list-p columns) columns)
-    (signal 'etaf-sqlite-schema-error
-            (list "SQLite table requires at least one column")))
-  (let ((index (make-hash-table :test #'equal))
-        (names (make-hash-table :test #'equal)))
-    (dolist (column columns index)
-      (unless (etaf-sqlite--column-p column)
-        (signal 'etaf-sqlite-schema-error (list "Invalid SQLite column")))
-      (when (gethash (etaf-sqlite--column-id column) index)
-        (signal 'etaf-sqlite-schema-error
-                (list "Duplicate SQLite semantic column ID")))
-      (let ((name (downcase (etaf-sqlite--column-sql-name column))))
-        (when (gethash name names)
-          (signal 'etaf-sqlite-schema-error
-                  (list "Duplicate SQLite physical column name")))
-        (puthash name t names))
-      (puthash (etaf-sqlite--column-id column) column index))))
-
-;;;###autoload
-(defun etaf-sqlite-table (id columns &optional primary-key)
-  "Declare table ID from COLUMNS and optional PRIMARY-KEY semantic ID."
-  (unless (or (symbolp id) (stringp id))
-    (signal 'etaf-sqlite-schema-error
-            (list (format "Table ID must be a stable scalar: %S" id))))
-  (let* ((columns (copy-sequence columns))
-         (index (etaf-sqlite--column-index columns))
-         (primary (and primary-key (gethash primary-key index))))
-    (when (and primary-key (not primary))
-      (signal 'etaf-sqlite-schema-error
-              (list (format "Unknown primary column: %S" primary-key))))
-    (when primary
-      (setf (etaf-sqlite--column-primary primary) t
-            (etaf-sqlite--column-nullable primary) nil))
-    (etaf-sqlite--table-create :id id :columns columns
-                                :primary-key primary-key :index index)))
-
-;;;###autoload
-(defun etaf-sqlite-database (file table)
-  "Describe SQLite FILE using typed TABLE metadata."
-  (unless (and (stringp file) (not (string-empty-p file)))
-    (signal 'etaf-sqlite-schema-error (list "SQLite file must be nonempty")))
-  (unless (etaf-sqlite--table-p table)
-    (signal 'etaf-sqlite-schema-error (list "SQLite database needs a table")))
-  (etaf-sqlite--database-create :file (expand-file-name file) :table table))
-
-(defun etaf-sqlite--require-available ()
-  "Signal when the running Emacs has no SQLite support."
-  (unless (sqlite-available-p)
-    (signal 'etaf-sqlite-unavailable nil)))
-
-(defun etaf-sqlite--call (database function)
-  "Call FUNCTION with a short-lived connection for DATABASE.
-
-Keep a cleanup failure after a successful mutation conservative: the write may
-already have committed even though closing the connection signalled.  When the
-body already failed, preserve that primary condition so transaction certainty
-is determined by the transaction phase rather than by cleanup noise."
-  (etaf-sqlite--require-available)
-  (let* ((file (etaf-sqlite--database-file database))
-         (directory (file-name-directory file))
-         connection)
-    (when directory
-      (make-directory directory t))
-    (setq connection (sqlite-open file))
-    (let (result body-condition close-condition)
-      ;; Keep the connection cleanup on all non-local exits, including a
-      ;; caller's `throw'.  Error and quit conditions are captured so cleanup
-      ;; failures can be classified without masking the primary condition.
-      (unwind-protect
-          (condition-case err
-              (setq result (funcall function connection))
-            ((error quit)
-             (setq body-condition err)))
-        (when (sqlitep connection)
-          (condition-case err
-              (sqlite-close connection)
-            ((error quit)
-             (setq close-condition err))))
-        )
-      (when (and close-condition
-                 etaf-sqlite--mutation-active
-                 (memq etaf-sqlite--mutation-phase '(committed committing))
-                 (not (and body-condition
-                           (eq (car body-condition)
-                               'etaf-sqlite-commit-unknown))))
-        (setq body-condition
-              (list 'etaf-sqlite-commit-unknown
-                    (list :failure-phase 'close :error close-condition))))
-      (when (and close-condition (not body-condition))
-        (setq body-condition close-condition))
-      (if body-condition
-          (signal (car body-condition) (cdr body-condition))
-        result))))
-
-(defun etaf-sqlite--transaction (connection function)
-  "Run FUNCTION in a transaction on CONNECTION and return its value."
-  (sqlite-transaction connection)
-  (let ((value
-         (condition-case body-err
-             (funcall function connection)
-           ((error quit)
-            (setq etaf-sqlite--mutation-phase 'rolling-back)
-            (let ((rollback-err
-                   (condition-case rollback-condition
-                       (progn (sqlite-rollback connection) nil)
-                     ((error quit) rollback-condition))))
-              (if rollback-err
-                  (progn
-                    (setq etaf-sqlite--mutation-phase 'unknown)
-                    (signal 'etaf-sqlite-commit-unknown
-                            (list :failure-phase 'rollback
-                                  :error body-err
-                                  :rollback-error rollback-err)))
-                (setq etaf-sqlite--mutation-phase 'rolled-back)
-                (signal (car body-err) (cdr body-err))))))))
-    (condition-case commit-err
-        (progn
-          (setq etaf-sqlite--mutation-phase 'committing)
-          (sqlite-commit connection)
-          (setq etaf-sqlite--mutation-phase 'committed)
-          value)
-      ((error quit)
-       (setq etaf-sqlite--mutation-phase 'unknown)
-       (signal 'etaf-sqlite-commit-unknown
-               (list :failure-phase 'commit :error commit-err))))))
-
-(defun etaf-sqlite--sql-type (type)
-  "Return SQLite DDL type for TYPE."
-  (pcase type
-    ('integer "INTEGER")
-    ('real "REAL")
-    ('text "TEXT")
-    ('blob "BLOB")
-    (_ "BLOB")))
-
-(defun etaf-sqlite--column-ddl (column)
-  "Return DDL for COLUMN."
-  (concat (etaf-sqlite--identifier
-           (etaf-sqlite--column-sql-name column) "column")
-          " " (etaf-sqlite--sql-type
-                (etaf-sqlite--column-type column))
-          (when (etaf-sqlite--column-primary column) " PRIMARY KEY")
-          (unless (or (etaf-sqlite--column-nullable column)
-                      (etaf-sqlite--column-primary column))
-            " NOT NULL")))
-
-;;;###autoload
-(defun etaf-sqlite-initialize (database)
-  "Create DATABASE's table if it does not exist and return DATABASE."
-  (etaf-sqlite--call
-   database
-   (lambda (connection)
-     (sqlite-execute
-      connection
-              (format "CREATE TABLE IF NOT EXISTS %s (%s)"
-              (etaf-sqlite--physical-name
-               (etaf-sqlite--table-id (etaf-sqlite--database-table database))
-               "table")
-              (mapconcat #'etaf-sqlite--column-ddl
-                         (etaf-sqlite--table-columns
-                          (etaf-sqlite--database-table database)) ", ")))))
-  database)
-
-(defun etaf-sqlite--record-value (record key)
-  "Return KEY from plist, alist, or hash RECORD."
-  (cond
-   ((hash-table-p record) (gethash key record))
-   ((and (proper-list-p record) (keywordp (car record)))
-    (plist-get record key))
-   ((listp record) (alist-get key record))
-   (t nil)))
-
-(defun etaf-sqlite--query-pairs (table query)
-  "Return allowlisted (COLUMN . VALUE) pairs from QUERY using TABLE."
-  (cond
-   ((null query) nil)
-   ((and (proper-list-p query) (keywordp (car query)))
-    (cl-loop for (key value) on query by #'cddr
-             collect (cons (gethash key (etaf-sqlite--table-index table)) value)))
-   ((listp query)
-    (cl-loop for (key . value) in query
-             collect (cons (gethash key (etaf-sqlite--table-index table)) value)))
-   (t
-    (signal 'etaf-sqlite-error
-            (list "SQLite query must be a plist or alist")))))
-
-(defun etaf-sqlite--where (table query)
-  "Return (SQL . VALUES) for allowlisted equality QUERY using TABLE."
-  (let (parts values)
-    (dolist (pair (etaf-sqlite--query-pairs table query))
-      (unless (car pair)
-        (signal 'etaf-sqlite-error (list "Unknown SQLite query column")))
-      (push (format "%s = ?"
-                    (etaf-sqlite--identifier
-                     (etaf-sqlite--column-sql-name (car pair)) "column")
-                    ) parts)
-      (push (cdr pair) values))
-    (cons (if parts (concat " WHERE " (string-join (nreverse parts) " AND ")) "")
-          (nreverse values))))
-
-(defun etaf-sqlite--row-plist (table row)
-  "Convert positional SQLite ROW to a semantic plist using TABLE."
-  (let (result)
-    (cl-loop for column in (etaf-sqlite--table-columns table)
-             for value in row
-             do (setq result
-                      (append result
-                              (list (etaf-sqlite--column-id column) value))))
-    result))
-
-(defun etaf-sqlite--select-items (database query page page-size)
-  "Load PAGE of PAGE-SIZE items from DATABASE for QUERY."
-  (let* ((table (etaf-sqlite--database-table database))
-         (where (etaf-sqlite--where table query))
-         (values (cdr where))
-         (page (max 1 (or page 1)))
-         (page-size (max 1 (or page-size 20)))
-         (offset (* (1- page) page-size))
-         (names (mapcar (lambda (column)
-                          (etaf-sqlite--identifier
-                           (etaf-sqlite--column-sql-name column) "column"))
-                        (etaf-sqlite--table-columns table)))
-         (table-name (etaf-sqlite--physical-name
-                      (etaf-sqlite--table-id table) "table"))
-         (order (when-let* ((primary (etaf-sqlite--table-primary-key table)))
-                  (format " ORDER BY %s"
-                          (etaf-sqlite--identifier
-                           (etaf-sqlite--column-sql-name
-                            (gethash primary (etaf-sqlite--table-index table)))
-                           "column")))))
-    (etaf-sqlite--call
-     database
-     (lambda (connection)
-       (let ((total (sqlite-select
-                     connection
-                     (format "SELECT COUNT(*) FROM %s%s" table-name
-                             (car where))
-                     values)))
-         (let ((rows (sqlite-select
-                      connection
-                      (format "SELECT %s FROM %s%s%s LIMIT ? OFFSET ?"
-                              (string-join names ", ") table-name (car where)
-                              (or order ""))
-                      (append values (list page-size offset)))))
-           (list :items (mapcar (lambda (row)
-                                  (etaf-sqlite--row-plist table row)) rows)
-                 :total (caar total)
-                 :page page :page-size page-size)))))))
-
-(defun etaf-sqlite--payload-columns (table payload)
-  "Return (COLUMN . VALUE) pairs from writable PAYLOAD fields using TABLE."
-  (let (result)
-    (dolist (column (etaf-sqlite--table-columns table) (nreverse result))
-      (let ((key (etaf-sqlite--column-id column)))
-        (when (and (not (etaf-sqlite--column-primary column))
-                   (or (plist-member payload key)
-                       (and (listp payload) (assoc key payload))))
-          (push (cons column (etaf-sqlite--record-value payload key)) result))))))
-
-(defun etaf-sqlite--mutation-result (connection operation value)
-  "Return a normalized mutation result for OPERATION and VALUE from CONNECTION.
-
-The result keeps source-specific details behind the Data contract while
-exposing the inserted identity and affected row count to application code."
-  (list :operation operation
-        :id (when (eq operation 'insert)
-              (caar (sqlite-select connection "SELECT last_insert_rowid()")))
-        :changes (caar (sqlite-select connection "SELECT changes()"))
-        :value value))
-
-(defun etaf-sqlite--mutate (database operation payload)
-  "Apply one Data mutation OPERATION with PAYLOAD to DATABASE."
-  (let* ((table (etaf-sqlite--database-table database))
-         (table-name (etaf-sqlite--physical-name
-                      (etaf-sqlite--table-id table) "table"))
-         (primary (etaf-sqlite--table-primary-key table)))
-    (unless primary
-      (signal 'etaf-sqlite-schema-error
-              (list "Mutations require a primary key")))
-    (let ((etaf-sqlite--mutation-active t)
-          (etaf-sqlite--mutation-phase 'body))
-      (etaf-sqlite--call
-       database
-       (lambda (connection)
-       (etaf-sqlite--transaction
-        connection
-        (lambda (transaction-connection)
-          (let ((value
-                 (pcase operation
-            ('insert
-             (let* ((columns
-                     (cl-remove-if
-                      (lambda (column)
-                        (null
-                         (or (plist-member payload
-                                            (etaf-sqlite--column-id column))
-                             (and (listp payload)
-                                  (assoc (etaf-sqlite--column-id column)
-                                         payload)))))
-                      (etaf-sqlite--table-columns table)))
-                    (names
-                     (mapcar
-                      (lambda (column)
-                        (etaf-sqlite--identifier
-                         (etaf-sqlite--column-sql-name column) "column"))
-                      columns))
-                    (marks (make-list (length columns) "?")))
-               (unless columns
-                 (signal 'etaf-sqlite-error
-                         (list "Insert payload is empty")))
-               (sqlite-execute
-                transaction-connection
-                (format "INSERT INTO %s (%s) VALUES (%s)"
-                        table-name (string-join names ", ")
-                        (string-join marks ", "))
-                (mapcar
-                 (lambda (column)
-                   (etaf-sqlite--record-value
-                    payload (etaf-sqlite--column-id column)))
-                 columns))))
-            ((or 'replace 'update)
-             (let* ((id (etaf-sqlite--record-value payload primary))
-                    (columns (etaf-sqlite--payload-columns table payload)))
-               (unless id
-                 (signal 'etaf-sqlite-error
-                         (list "Update payload lacks primary key")))
-               (unless columns
-                 (signal 'etaf-sqlite-error
-                         (list "Update payload has no fields")))
-               (sqlite-execute
-                transaction-connection
-                (format "UPDATE %s SET %s WHERE %s = ?"
-                        table-name
-                        (mapconcat
-                         (lambda (pair)
-                           (format "%s = ?"
-                                   (etaf-sqlite--identifier
-                                    (etaf-sqlite--column-sql-name (car pair))
-                                    "column")))
-                         columns ", ")
-                        (etaf-sqlite--identifier
-                         (etaf-sqlite--column-sql-name
-                          (gethash primary (etaf-sqlite--table-index table)))
-                         "column"))
-                (append (mapcar #'cdr columns) (list id)))))
-            ('delete
-             (let ((id (if (and (listp payload)
-                                (or (plist-member payload primary)
-                                    (assoc primary payload)))
-                           (etaf-sqlite--record-value payload primary)
-                         payload)))
-               (unless id
-                 (signal 'etaf-sqlite-error
-                         (list "Delete payload lacks primary key")))
-               (sqlite-execute
-                transaction-connection
-                (format "DELETE FROM %s WHERE %s = ?" table-name
-                        (etaf-sqlite--identifier
-                         (etaf-sqlite--column-sql-name
-                          (gethash primary (etaf-sqlite--table-index table)))
-                         "column"))
-                (list id))))
-            (_
-             (signal 'etaf-sqlite-error
-                     (list (format "Unsupported SQLite mutation: %S"
-                                   operation)))))))
-            (etaf-sqlite--mutation-result
-              transaction-connection operation value)))))))))
-
-(defun etaf-sqlite--mutate-v2 (database operation payload)
-  "Return a commit-certified outcome for DATABASE mutation OPERATION and PAYLOAD.
-
-This optional capability deliberately does not replace the v1 `:mutate'
-callback.  Successful transactions return `:certainty committed' and a
-reconciliation token.  A body failure is `:certainty rolled-back' only when
-rollback succeeds; commit, rollback, or close uncertainty is returned as
-`:certainty external-unknown' with the original condition in `:error'."
-  (let ((token (etaf-sqlite--reconciliation-token)))
-    (condition-case err
-        (let ((result (etaf-sqlite--mutate database operation payload)))
-          (list :certainty 'committed
-                :external-commit-certainty 'committed
-                :operation operation
-                :result result
-                :mutation-result result
-                :reconciliation-token token))
-      ((error quit)
-       (list :certainty (if (eq (car err) 'etaf-sqlite-commit-unknown)
-                            'external-unknown
-                          'rolled-back)
-             :external-commit-certainty
-             (if (eq (car err) 'etaf-sqlite-commit-unknown)
-                 'external-unknown
-               'rolled-back)
-             :operation operation
-             :error err
-             :reconciliation-token token)))))
-
-;;;###autoload
-(cl-defun etaf-sqlite-source (database &key mutate-v2)
-  "Return an `etaf-data-source' backed by DATABASE.
-
-The source accepts equality plist/alist queries and supports `insert',
-`replace', `update', and `delete' mutations.  Mutation results include the
-operation, affected row count, and inserted identity when applicable.  Every
-operation uses a short connection; controllers remain the owner of reactive
-state and lifecycle.  The legacy `:mutate' capability is exposed by default.
-When MUTATE-V2 is non-nil, add the opt-in `:mutate-v2' capability that returns
-explicit commit/rollback certainty and an opaque reconciliation token."
-  (unless (etaf-sqlite--database-p database)
-    (signal 'wrong-type-argument
-            (list 'etaf-sqlite-database-p database)))
-  (let ((capabilities
-         (list :name 'etaf-sqlite
-               :provider 'sqlite
-               :load (lambda (query page page-size)
-                       (etaf-sqlite--select-items database query page page-size))
-               :mutate (lambda (operation payload)
-                         (etaf-sqlite--mutate database operation payload)))))
-    ;; Keep the typed wrapper opt-in.  The M4a additive path must not silently
-    ;; change existing SQLite controllers from the v1 callback contract.
-    (when mutate-v2
-      (setq capabilities
-            (append capabilities
-                    (list :mutate-v2
-                          (lambda (operation payload)
-                            (etaf-sqlite--mutate-v2 database operation payload))))))
-    (apply #'etaf-data-source capabilities)))
+(require 'etaf-sqlite-store)
 
 (provide 'etaf-sqlite)
-
 ;;; etaf-sqlite.el ends here

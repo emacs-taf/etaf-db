@@ -1,17 +1,17 @@
 .DEFAULT_GOAL := check
 .NOTPARALLEL:
 EMACS ?= emacs
-LOAD_PATH = -L . -L ../etaf/lisp -L ../ebox/lisp -L ../ecss/lisp -L ../tp/lisp
+LOAD_PATH = -L . -L lisp -L ../etaf -L ../ebox -L ../ecss -L ../tp
 
 .PHONY: all compile test check checkdoc load clean
 
 all: check
 
 compile:
-	rm -f *.elc tests/*.elc
+	rm -f *.elc lisp/*.elc tests/*.elc
 	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(setq load-prefer-newer t)' \
 		--eval '(load-file "etaf-sqlite.el")' \
-		--eval '(byte-compile-file "etaf-sqlite.el")'
+		--eval '(progn (byte-compile-file "lisp/etaf-sqlite-store.el") (byte-compile-file "etaf-sqlite.el"))'
 
 test: compile
 	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(setq load-prefer-newer t)' \
@@ -24,10 +24,10 @@ load: compile
 checkdoc:
 	$(EMACS) -Q --batch --eval '(progn (require (quote checkdoc)) (dolist (file (directory-files "." t)) (when (string-suffix-p ".el" file) (checkdoc-file file))))'
 
-check: structure-check compile acceptance
+check: structure-check compile acceptance api-check
 
 clean:
-	rm -f *.elc tests/*.elc
+	rm -f *.elc lisp/*.elc tests/*.elc
 
 .PHONY: structure-check setup-hooks
 structure-check:
@@ -38,3 +38,8 @@ setup-hooks:
 .PHONY: acceptance
 acceptance:
 	python3 scripts/run-acceptance.py --emacs "$(EMACS)"
+
+.PHONY: api-check
+api-check:
+	$(EMACS) -Q --batch -L . $(API_PROVIDER_PATH) --eval '(setq load-prefer-newer t)' -l scripts/check-api.el
+API_PROVIDER_PATH = -L ../ecss -L ../tp -L ../ekp -L ../ebox -L ../etaf -L ../etaf-ui -L ../ebox-playground -L ../etaf-playground
