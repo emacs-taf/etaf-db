@@ -30,15 +30,14 @@ Run `make check EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs` from this di
 
 ## Development
 
-After cloning, run `make setup-hooks`. Before submitting a change, run `make check`; `make structure-check` is the fast organization gate. The shared rules are in [AGENTS.md](AGENTS.md).
+After cloning, run `make setup-hooks`. Before submitting a change, run `make check`; `make structure-check` is the fast organization gate.
 
 [Integration contract](docs/manual.md).
 
-`make check` runs structure checks, compilation and the public acceptance scenarios listed in [tests/acceptance.json](tests/acceptance.json). `make test` runs the same public API suite. The inventory covers every maintained Lisp test; private implementation tests are deleted. GUI and performance checks use separate targets.
+`make check` runs structure checks, compilation and the public acceptance scenarios listed in [tests/acceptance.json](tests/acceptance.json). `make test` runs the same public API suite. The inventory covers every maintained Lisp test. GUI and performance checks use separate targets.
 
-## Source layout migration
+## Source layout
 
-Replace checkout paths ending in `/etaf-db/lisp` with `/etaf-db` and require
-`etaf-sqlite`. Package archives must preserve the root entry and `lisp/` directory.
-Use only the public interfaces documented in the entry Commentary; internal
-feature imports and the former entry locations are removed.
+Add the repository root to `load-path` and require `etaf-sqlite`. The root entry
+loads the implementation in `lisp/` and documents the supported public APIs in
+its Commentary. Package archives include both the root entry and `lisp/`.
