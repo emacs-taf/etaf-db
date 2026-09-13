@@ -24,3 +24,11 @@ read-only reconciliation.
 Other databases, REST services, files, and ORMs should implement the same source capability in their own packages; they do not belong in ETAF core or in a generic `etaf-adapters` layer.
 
 Run `make check EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs` from this directory.
+
+## Development
+
+After cloning, run `make setup-hooks`. Before submitting a change, run `make check`; `make structure-check` is the fast organization gate. The shared rules are in [AGENTS.md](AGENTS.md).
+
+[Integration contract](docs/manual.md).
+
+`make check` runs structure checks, compilation and the public acceptance scenarios listed in [tests/acceptance.json](tests/acceptance.json). `make test` runs the broader regression suite; GUI and performance checks remain explicit targets. The acceptance inventory is selected by user-visible contracts, not by current pass/fail status.

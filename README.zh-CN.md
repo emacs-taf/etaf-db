@@ -23,3 +23,11 @@
 其他数据库、REST、文件和 ORM 应在各自的具体数据源包中实现同一个 source capability；它们不进入 ETAF core，也不创建笼统的 `etaf-adapters` 层。
 
 在该目录运行 `make check EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs`。
+
+## 开发
+
+克隆后运行 `make setup-hooks`。提交变更前运行 `make check`；`make structure-check` 用于快速检查目录、命名和引用。统一开发规则见 [AGENTS.md](AGENTS.md)。
+
+[集成契约](docs/manual.zh-CN.md)。
+
+`make check` 运行规范检查、编译及 [tests/acceptance.json](tests/acceptance.json) 中的公共验收场景。`make test` 运行更全面的回归测试；GUI 与性能验收使用独立入口。验收清单依据对外契约选择，不按当前能否通过筛选。

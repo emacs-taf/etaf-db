@@ -1,0 +1,59 @@
+{
+  "schema": 1,
+  "load_path": [
+    ".",
+    "tests",
+    "../etaf",
+    "../ebox",
+    "../ecss",
+    "../tp"
+  ],
+  "support": [],
+  "cases": [
+    {
+      "name": "etaf-sqlite-schema-rejects-unsafe-identifiers",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite schema rejects unsafe identifiers"
+    },
+    {
+      "name": "etaf-sqlite-source-loads-and-filters-pages",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite source loads and filters pages"
+    },
+    {
+      "name": "etaf-sqlite-source-mutations-are-visible-to-data-controller",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite source mutations are visible to data controller"
+    },
+    {
+      "name": "etaf-sqlite-source-declares-provider-identity",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite source declares provider identity"
+    },
+    {
+      "name": "etaf-sqlite-v2-mutation-outcome-reports-commit",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite v2 mutation outcome reports commit"
+    },
+    {
+      "name": "etaf-sqlite-v2-mutation-outcome-reports-rollback",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite v2 mutation outcome reports rollback"
+    },
+    {
+      "name": "etaf-sqlite-committed-mutation-load-failure-is-read-only-retry",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite committed mutation load failure is read only retry"
+    },
+    {
+      "name": "etaf-sqlite-v2-post-commit-signal-reports-unknown",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite v2 post commit signal reports unknown"
+    },
+    {
+      "name": "etaf-sqlite-v2-close-after-commit-reports-unknown",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "etaf sqlite v2 close after commit reports unknown"
+    }
+  ]
+}

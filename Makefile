@@ -1,5 +1,7 @@
+.DEFAULT_GOAL := check
+.NOTPARALLEL:
 EMACS ?= emacs
-LOAD_PATH = -L . -L ../etaf -L ../ebox
+LOAD_PATH = -L . -L ../etaf -L ../ebox -L ../ecss -L ../tp
 
 .PHONY: all compile test check checkdoc load clean
 
@@ -22,7 +24,17 @@ load: compile
 checkdoc:
 	$(EMACS) -Q --batch --eval '(progn (require (quote checkdoc)) (dolist (file (directory-files "." t)) (when (string-suffix-p ".el" file) (checkdoc-file file))))'
 
-check: checkdoc compile test
+check: structure-check compile acceptance
 
 clean:
 	rm -f *.elc tests/*.elc
+
+.PHONY: structure-check setup-hooks
+structure-check:
+	python3 scripts/check-repository.py
+setup-hooks:
+	git config --local core.hooksPath .githooks
+
+.PHONY: acceptance
+acceptance:
+	python3 scripts/run-acceptance.py --emacs "$(EMACS)"
