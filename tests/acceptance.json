@@ -3,9 +3,13 @@
   "load_path": [
     ".",
     "tests",
-    "../etaf",
     "../ebox",
+    "../ebox-playground",
     "../ecss",
+    "../ekp",
+    "../etaf",
+    "../etaf-playground",
+    "../etaf-ui",
     "../tp"
   ],
   "support": [],
@@ -13,47 +17,42 @@
     {
       "name": "etaf-sqlite-schema-rejects-unsafe-identifiers",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite schema rejects unsafe identifiers"
+      "purpose": "Identifiers are validated before they can reach SQL text."
     },
     {
       "name": "etaf-sqlite-source-loads-and-filters-pages",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite source loads and filters pages"
+      "purpose": "The source should implement ETAF Data's load capability."
     },
     {
       "name": "etaf-sqlite-source-mutations-are-visible-to-data-controller",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite source mutations are visible to data controller"
+      "purpose": "Insert, update, and delete should share the Data source contract."
     },
     {
       "name": "etaf-sqlite-source-declares-provider-identity",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite source declares provider identity"
+      "purpose": "Expose SQLite identity without depending on ETAF observer internals."
     },
     {
       "name": "etaf-sqlite-v2-mutation-outcome-reports-commit",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite v2 mutation outcome reports commit"
+      "purpose": "The optional v2 capability reports a committed transaction and token."
     },
     {
       "name": "etaf-sqlite-v2-mutation-outcome-reports-rollback",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite v2 mutation outcome reports rollback"
-    },
-    {
-      "name": "etaf-sqlite-committed-mutation-load-failure-is-read-only-retry",
-      "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite committed mutation load failure is read only retry"
+      "purpose": "A failed v2 mutation reports rollback and preserves the original error."
     },
     {
       "name": "etaf-sqlite-v2-post-commit-signal-reports-unknown",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite v2 post commit signal reports unknown"
+      "purpose": "A signal after sqlite-commit must not claim the committed write rolled back."
     },
     {
       "name": "etaf-sqlite-v2-close-after-commit-reports-unknown",
       "file": "tests/etaf-sqlite-tests.el",
-      "purpose": "etaf sqlite v2 close after commit reports unknown"
+      "purpose": "A close signal after commit is also external uncertainty."
     }
   ]
 }

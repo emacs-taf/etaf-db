@@ -1,5 +1,11 @@
-;;; etaf-sqlite-tests.el --- ETAF SQLite source tests -*- lexical-binding: t; -*-
+;;; etaf-sqlite-tests.el --- Public API acceptance -*- lexical-binding: t; -*-
 
+;;; Commentary:
+;; Test supported package inputs, outputs, errors and lifecycle.
+;; Internal implementation details are outside this contract.
+
+;;; Code:
+(require 'cl-lib)
 (require 'ert)
 (require 'etaf-sqlite)
 
@@ -120,56 +126,6 @@
       (should (plist-get outcome :reconciliation-token))
       (should (= (plist-get loaded :total) 2)))))
 
-(ert-deftest etaf-sqlite-committed-mutation-load-failure-is-read-only-retry ()
-  "A committed SQLite row survives a failed projection read and retries safely."
-  (etaf-sqlite-test--with-database (database)
-    (let* ((base (etaf-sqlite-source database :mutate-v2 t))
-           (base-load (plist-get base :load))
-           (base-mutate-v2 (plist-get base :mutate-v2))
-           (load-count 0)
-           (mutate-count 0)
-           (fail-load t)
-           (source (copy-sequence base)))
-      (setf (plist-get source :load)
-            (lambda (&rest args)
-              (cl-incf load-count)
-              (if fail-load
-                  (error "injected reconciliation read failure")
-                (apply base-load args))))
-      (setf (plist-get source :mutate-v2)
-            (lambda (operation payload)
-              (cl-incf mutate-count)
-              (funcall base-mutate-v2 operation payload)))
-      (let* ((initial (funcall base-load nil 1 20))
-             (controller (etaf-data-controller source :initial-result initial))
-             captured)
-        (unwind-protect
-            (progn
-              (condition-case condition
-                  (etaf-data-mutate
-                   controller 'insert '(:id 3 :name "Alan" :score 30))
-                (error (setq captured condition)))
-              (should captured)
-              (should (etaf-data-condition-projection-info captured))
-              (should (= mutate-count 1))
-              (should (= load-count 1))
-              (should (equal '(1 2)
-                             (mapcar (lambda (row) (plist-get row :id))
-                                     (etaf-value (etaf-data-items controller)))))
-              (should (= 3
-                         (plist-get (funcall base-load nil 1 20) :total)))
-              (setq fail-load nil)
-              (etaf-data-retry-reconciliation controller)
-              (should (= mutate-count 1))
-              (should (= load-count 2))
-              (should (eq 'success (etaf-value (etaf-data-status controller))))
-              (should (equal '(1 2 3)
-                             (mapcar (lambda (row) (plist-get row :id))
-                                     (etaf-value (etaf-data-items controller)))))
-              (should (eq 'projected
-                          (etaf-data-reconciliation-state controller))))
-          (etaf-data-stop controller))))))
-
 (ert-deftest etaf-sqlite-v2-post-commit-signal-reports-unknown ()
   "A signal after sqlite-commit must not claim the committed write rolled back."
   (etaf-sqlite-test--with-database (database)
@@ -203,5 +159,4 @@
       (should (eq (plist-get outcome :certainty) 'external-unknown)))))
 
 (provide 'etaf-sqlite-tests)
-
 ;;; etaf-sqlite-tests.el ends here

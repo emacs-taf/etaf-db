@@ -3,7 +3,7 @@
 EMACS ?= emacs
 LOAD_PATH = -L . -L lisp -L ../etaf -L ../ebox -L ../ecss -L ../tp
 
-.PHONY: all compile test check checkdoc load clean
+.PHONY: all compile check checkdoc load clean
 
 all: check
 
@@ -12,10 +12,6 @@ compile:
 	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(setq load-prefer-newer t)' \
 		--eval '(load-file "etaf-sqlite.el")' \
 		--eval '(progn (byte-compile-file "lisp/etaf-sqlite-store.el") (byte-compile-file "etaf-sqlite.el"))'
-
-test: compile
-	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(setq load-prefer-newer t)' \
-		-l tests/etaf-sqlite-tests.el -f ert-run-tests-batch-and-exit
 
 load: compile
 	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(require (quote etaf-sqlite))' \
@@ -43,3 +39,6 @@ acceptance:
 api-check:
 	$(EMACS) -Q --batch -L . $(API_PROVIDER_PATH) --eval '(setq load-prefer-newer t)' -l scripts/check-api.el
 API_PROVIDER_PATH = -L ../ecss -L ../tp -L ../ekp -L ../ebox -L ../etaf -L ../etaf-ui -L ../ebox-playground -L ../etaf-playground
+
+.PHONY: test
+test: acceptance
