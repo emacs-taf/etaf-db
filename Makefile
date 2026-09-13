@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := check
 .NOTPARALLEL:
 EMACS ?= emacs
-LOAD_PATH = -L . -L ../etaf -L ../ebox -L ../ecss -L ../tp
+LOAD_PATH = -L . -L ../etaf/lisp -L ../ebox/lisp -L ../ecss/lisp -L ../tp/lisp
 
 .PHONY: all compile test check checkdoc load clean
 

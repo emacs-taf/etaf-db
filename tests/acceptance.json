@@ -3,10 +3,10 @@
   "load_path": [
     ".",
     "tests",
-    "../etaf",
-    "../ebox",
-    "../ecss",
-    "../tp"
+    "../etaf/lisp",
+    "../ebox/lisp",
+    "../ecss/lisp",
+    "../tp/lisp"
   ],
   "support": [],
   "cases": [
