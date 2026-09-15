@@ -10,12 +10,12 @@ all: check
 compile:
 	rm -f *.elc lisp/*.elc tests/*.elc
 	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(setq load-prefer-newer t)' \
-		--eval '(load-file "etaf-sqlite.el")' \
-		--eval '(progn (byte-compile-file "lisp/etaf-sqlite-store.el") (byte-compile-file "etaf-sqlite.el"))'
+		--eval '(load-file "etaf-db.el")' \
+		--eval '(progn (byte-compile-file "lisp/etaf-sqlite-store.el") (byte-compile-file "etaf-db.el"))'
 
 load: compile
-	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(require (quote etaf-sqlite))' \
-		--eval '(princ "etaf-sqlite load OK\n")'
+	$(EMACS) -Q --batch $(LOAD_PATH) --eval '(require (quote etaf-db))' \
+		--eval '(princ "etaf-db load OK\n")'
 
 checkdoc:
 	$(EMACS) -Q --batch --eval '(progn (require (quote checkdoc)) (dolist (file (directory-files "." t)) (when (string-suffix-p ".el" file) (checkdoc-file file))))'

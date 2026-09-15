@@ -1,33 +1,46 @@
-# etaf-sqlite
+# ETAF DB
 
-`etaf-sqlite` 是 ETAF 的具体 SQLite 存储包，把 Emacs 内置 SQLite 能力适配到核心 `etaf-data-source` 契约。Data Controller 仍属于 `etaf`；本包只负责 schema 校验、短连接、分页查询和同步 mutation。
+[English](README.md)
+
+`etaf-db` 为 ETAF 框架提供数据库后端，目前只实现 SQLite。它将 Emacs 内置
+SQLite 能力适配为 `etaf-data-source`；Data Controller 和响应式状态仍由 ETAF
+核心管理。
+
+## 安装与使用
+
+需要支持 SQLite 的 Emacs 29.1 或更高版本，以及 ETAF 0.2.1 或更高版本。
+使用源码 checkout 时，将本仓库根目录和 ETAF 依赖的根目录加入 `load-path`，
+然后使用 `(require 'etaf-db)`。安装归档应同时包含根入口与 `lisp/`。
+[`etaf-db.el`](etaf-db.el) 维护支持的公共 API。SQLite 专用构造函数保留
+`etaf-sqlite-*` 前缀，因为其 schema 和存储参数描述的是该后端。
 
 ```elisp
-(require 'etaf-sqlite)
+(require 'etaf-db)
 
 (let* ((table (etaf-sqlite-table
                'items
                (list (etaf-sqlite-column :id "id" :type 'integer :primary t)
                      (etaf-sqlite-column :name "name" :type 'text))
                :id))
-       (database (etaf-sqlite-database "~/items.sqlite" table))
-       (source (etaf-sqlite-source database)))
+       (database (etaf-sqlite-database "~/items.sqlite" table)))
   (etaf-sqlite-initialize database)
-  (etaf-data-controller source :auto-load t))
+  (let ((controller (etaf-data-controller
+                     (etaf-sqlite-source database) :auto-load t)))
+    (unwind-protect
+        (message "%S" (etaf-value (etaf-data-items controller)))
+      (etaf-data-stop controller))))
 ```
 
-默认 source 仍只暴露兼容的 `:mutate` callback。需要明确的提交/回滚确定性
-和只读 reconciliation 时，显式使用 `(etaf-sqlite-source database
-:mutate-v2 t)` 开启增量 wrapper。
+SQLite 后端负责 schema 校验、短连接、分页、查询和同步写入。数据源使用既有的
+ETAF Data Source 契约，不增加数据库专用 Controller、ORM 或后端分派协议。
+非数据库集成可以独立实现同一个数据源契约。
 
-其他数据库、REST、文件和 ORM 应在各自的具体数据源包中实现同一个 source capability；它们不进入 ETAF core，也不创建笼统的 `etaf-adapters` 层。
-
-在该目录运行 `make check EMACS=/Applications/Emacs.app/Contents/MacOS/Emacs`。
+支持的查询、写入、生命周期以及可选的 `:mutate-v2 t` 数据源能力见
+[使用手册](docs/manual.zh-CN.md)。
 
 ## 开发
 
-克隆后运行 `make setup-hooks`。提交变更前运行 `make check`；`make structure-check` 用于快速检查目录、命名和引用。
-
-[集成契约](docs/manual.zh-CN.md)。
-
-`make check` 运行规范检查、编译及 [tests/acceptance.json](tests/acceptance.json) 中的公共验收场景。`make test` 运行同一套公共 API 测试。清单涵盖全部维护的 Lisp 测试。GUI 与性能验收使用独立入口。
+克隆后运行 `make setup-hooks`。`make structure-check` 是快速的结构和 API 边界
+门禁。`make check EMACS=/path/to/emacs` 还会编译、验证入口，并运行
+[tests/acceptance.json](tests/acceptance.json) 中的公共场景。`make test` 运行
+同一套正确性场景。GUI 与性能验收使用消费示例的独立流程。

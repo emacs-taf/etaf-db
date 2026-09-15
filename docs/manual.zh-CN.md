@@ -1,11 +1,17 @@
-# SQLite 适配器使用手册
+# ETAF DB 使用手册
 
 ## 集成契约
 
-提供方是 `etaf-db` 仓库中的 `etaf-sqlite` 包。调用方创建 `etaf-data-source`
+从仓库根入口加载 `(require 'etaf-db)`。本包为 ETAF 提供数据库后端，
+目前只实现 SQLite；`etaf-sqlite-*` 后端 API 由[包入口](../etaf-db.el)维护。
+
+调用方创建 `etaf-data-source`
 交给 ETAF Data Controller；响应式状态和生命周期由 Controller 管理。
-适配器负责 schema 校验、SQL、事务及短连接。调用方使用公共构造函数和 capability，
+SQLite 后端负责 schema 校验、SQL、事务及短连接。调用方使用公共构造函数和 capability，
 不调用私有 SQL 辅助函数。
+
+不再使用 Controller 时调用 `etaf-data-stop`。描述符和数据源不会在操作之间
+保留数据库连接。数据库后端复用既有数据源能力，不增加专用 Controller 协议或 ORM。
 
 1. 用 `etaf-sqlite-column` 和 `etaf-sqlite-table` 声明列与表。
 2. 用 `etaf-sqlite-database` 创建描述符，并调用 `etaf-sqlite-initialize` 初始化表。

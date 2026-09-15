@@ -7,7 +7,7 @@
 ;;; Code:
 (require 'cl-lib)
 (require 'ert)
-(require 'etaf-sqlite)
+(require 'etaf-db)
 
 (defun etaf-sqlite-test--database (file)
   "Return a small typed test DATABASE at FILE."

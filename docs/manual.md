@@ -1,11 +1,20 @@
-# SQLite adapter manual
+# ETAF DB manual
 
 ## Integration contract
 
-Provider: `etaf-sqlite` in the `etaf-db` repository. Consumers create an
+Load `(require 'etaf-db)` from the repository root. This package provides
+database backends for ETAF; SQLite is the only implemented backend. Its
+`etaf-sqlite-*` API is documented in the [package entry](../etaf-db.el).
+
+Consumers create an
 `etaf-data-source` for an ETAF Data Controller; the controller owns reactive state
-and lifecycle. This adapter owns schema validation, SQL, transactions and short-lived
+and lifecycle. The SQLite backend owns schema validation, SQL, transactions and short-lived
 connections. Use public constructors and capabilities; do not call private SQL helpers.
+
+Call `etaf-data-stop` when the controller is no longer used. No database
+connection is held by the descriptor or by the source between operations.
+Database backends use the existing source capabilities rather than a separate
+controller protocol; this package does not add an ORM.
 
 1. Build columns with `etaf-sqlite-column` and a table with `etaf-sqlite-table`.
 2. Create a database descriptor with `etaf-sqlite-database`, then call

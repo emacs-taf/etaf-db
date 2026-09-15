@@ -2,14 +2,14 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; URL: https://github.com/ginqi7/etaf-sqlite
+;; URL: https://gitea.gklazycat.heiyu.space/geekinney/etaf-db
 
 ;;; Commentary:
 
-;; This package adapts Emacs' built-in SQLite API to the small capability
-;; contract owned by `etaf-data'.  It is intentionally a source adapter, not a
-;; second Data controller and not a general ORM.  Other storage systems can
-;; implement the same `etaf-data-source' callbacks without changing ETAF.
+;; SQLite backend implementation for `etaf-db'.  It adapts Emacs' built-in
+;; SQLite API to the `etaf-data-source' capability contract owned by ETAF.
+;; Backend operations own SQL, schema validation and short-lived connections;
+;; reactive state and Data Controller lifecycle remain in ETAF core.
 
 ;;; Code:
 
