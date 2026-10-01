@@ -158,5 +158,57 @@
                        '(:id 3 :name "Committed" :score 30)))))
       (should (eq (plist-get outcome :certainty) 'external-unknown)))))
 
+(ert-deftest etaf-sqlite-source-upsert-inserts-and-updates ()
+  "Upsert should make the store match a record whether or not it exists.
+It returns the primary identity on both paths and does not duplicate a row."
+  (etaf-sqlite-test--with-database (database)
+    (let ((controller (etaf-data-controller (etaf-sqlite-source database)
+                                            :page-size 20 :auto-load nil)))
+      (unwind-protect
+          (progn
+            (let ((inserted (etaf-data-mutate
+                             controller 'upsert
+                             '(:id 3 :name "Alan" :score 30))))
+              (should (eq 'upsert (plist-get inserted :operation)))
+              (should (= 3 (plist-get inserted :id)))
+              (should (= 1 (plist-get inserted :changes))))
+            (let ((updated (etaf-data-mutate
+                            controller 'upsert
+                            '(:id 3 :name "Alan Turing" :score 31))))
+              (should (= 3 (plist-get updated :id)))
+              (should (= 1 (plist-get updated :changes))))
+            (should (= 3 (etaf-value (etaf-data-total controller))))
+            (let ((row (car (cl-remove-if-not
+                             (lambda (item) (= (plist-get item :id) 3))
+                             (etaf-value (etaf-data-items controller))))))
+              (should (equal "Alan Turing" (plist-get row :name)))
+              (should (= 31 (plist-get row :score)))))
+        (etaf-data-stop controller)))))
+
+(ert-deftest etaf-sqlite-mutating-a-missing-row-signals ()
+  "Update and replace report a missing identity like the memory source.
+A zero-change UPDATE must not read as a successful write."
+  (etaf-sqlite-test--with-database (database)
+    (let ((mutate (plist-get (etaf-sqlite-source database) :mutate)))
+      (should-error (funcall mutate 'update '(:id 99 :name "Nobody"))
+                    :type 'etaf-sqlite-error)
+      (should-error (funcall mutate 'replace '(:id 99 :name "Nobody"))
+                    :type 'etaf-sqlite-error))))
+
+(ert-deftest etaf-sqlite-source-exposes-primary-key-identity ()
+  "The source should supply the Data Controller item identity.
+A controller created without an explicit :item-key uses the primary key."
+  (etaf-sqlite-test--with-database (database)
+    (let* ((source (etaf-sqlite-source database))
+           (item-key (plist-get source :item-key))
+           (controller (etaf-data-controller source :page-size 20 :auto-load t)))
+      (unwind-protect
+          (progn
+            (should (functionp item-key))
+            (should (equal 2 (funcall item-key '(:id 2 :name "Grace" :score 20))))
+            (should (equal 2 (etaf-data-item-identity
+                              controller '(:id 2 :name "Grace" :score 20)))))
+        (etaf-data-stop controller)))))
+
 (provide 'etaf-sqlite-tests)
 ;;; etaf-sqlite-tests.el ends here

@@ -362,14 +362,17 @@ is determined by the transaction phase rather than by cleanup noise."
                        (and (listp payload) (assoc key payload))))
           (push (cons column (etaf-sqlite--record-value payload key)) result))))))
 
-(defun etaf-sqlite--mutation-result (connection operation value)
+(defun etaf-sqlite--mutation-result (connection operation value &optional id)
   "Return a normalized mutation result for OPERATION and VALUE from CONNECTION.
 
-The result keeps source-specific details behind the Data contract while
-exposing the inserted identity and affected row count to application code."
+ID is the primary-key value of an upsert, whose INSERT ... ON CONFLICT may
+have updated an existing row instead of inserting one.  The result keeps
+source-specific details behind the Data contract while exposing the inserted
+identity and affected row count to application code."
   (list :operation operation
-        :id (when (eq operation 'insert)
-              (caar (sqlite-select connection "SELECT last_insert_rowid()")))
+        :id (or id
+                (when (eq operation 'insert)
+                  (caar (sqlite-select connection "SELECT last_insert_rowid()"))))
         :changes (caar (sqlite-select connection "SELECT changes()"))
         :value value))
 
@@ -447,7 +450,67 @@ exposing the inserted identity and affected row count to application code."
                          (etaf-sqlite--column-sql-name
                           (gethash primary (etaf-sqlite--table-index table)))
                          "column"))
-                (append (mapcar #'cdr columns) (list id)))))
+                (append (mapcar #'cdr columns) (list id)))
+               ;; The memory source signals for a missing identity, so a
+               ;; no-op UPDATE must not read as a successful replace here.
+               (when (zerop (caar (sqlite-select transaction-connection
+                                                 "SELECT changes()")))
+                 (signal 'etaf-sqlite-error
+                         (list (format "No SQLite row for primary key %S" id))))))
+            ('upsert
+             (let* ((columns
+                     (cl-remove-if
+                      (lambda (column)
+                        (null
+                         (or (plist-member payload
+                                            (etaf-sqlite--column-id column))
+                             (and (listp payload)
+                                  (assoc (etaf-sqlite--column-id column)
+                                         payload)))))
+                      (etaf-sqlite--table-columns table)))
+                    (names
+                     (mapcar
+                      (lambda (column)
+                        (etaf-sqlite--identifier
+                         (etaf-sqlite--column-sql-name column) "column"))
+                      columns))
+                    (marks (make-list (length columns) "?"))
+                    (id (etaf-sqlite--record-value payload primary))
+                    (updates (cl-remove-if
+                              (lambda (column)
+                                (etaf-sqlite--column-primary column))
+                              columns)))
+               (unless id
+                 (signal 'etaf-sqlite-error
+                         (list "Upsert payload lacks primary key")))
+               (unless columns
+                 (signal 'etaf-sqlite-error
+                         (list "Upsert payload is empty")))
+               (sqlite-execute
+                transaction-connection
+                (format "INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) %s"
+                        table-name (string-join names ", ")
+                        (string-join marks ", ")
+                        (etaf-sqlite--identifier
+                         (etaf-sqlite--column-sql-name
+                          (gethash primary (etaf-sqlite--table-index table)))
+                         "column")
+                        (if updates
+                            (concat
+                             "DO UPDATE SET "
+                             (mapconcat
+                              (lambda (column)
+                                (let ((name (etaf-sqlite--identifier
+                                             (etaf-sqlite--column-sql-name column)
+                                             "column")))
+                                  (format "%s = excluded.%s" name name)))
+                              updates ", "))
+                          "DO NOTHING"))
+                (mapcar
+                 (lambda (column)
+                   (etaf-sqlite--record-value
+                    payload (etaf-sqlite--column-id column)))
+                 columns))))
             ('delete
              (let ((id (if (and (listp payload)
                                 (or (plist-member payload primary)
@@ -470,7 +533,9 @@ exposing the inserted identity and affected row count to application code."
                      (list (format "Unsupported SQLite mutation: %S"
                                    operation)))))))
             (etaf-sqlite--mutation-result
-              transaction-connection operation value)))))))))
+              transaction-connection operation value
+              (when (eq operation 'upsert)
+                (etaf-sqlite--record-value payload primary)))))))))))
 
 (defun etaf-sqlite--mutate-v2 (database operation payload)
   "Return a commit-certified outcome for DATABASE mutation OPERATION and PAYLOAD.
@@ -506,22 +571,32 @@ rollback succeeds; commit, rollback, or close uncertainty is returned as
   "Return an `etaf-data-source' backed by DATABASE.
 
 The source accepts equality plist/alist queries and supports `insert',
-`replace', `update', and `delete' mutations.  Mutation results include the
-operation, affected row count, and inserted identity when applicable.  Every
-operation uses a short connection; controllers remain the owner of reactive
-state and lifecycle.  The legacy `:mutate' capability is exposed by default.
-When MUTATE-V2 is non-nil, add the opt-in `:mutate-v2' capability that returns
-explicit commit/rollback certainty and an opaque reconciliation token."
+`replace', `update', `upsert', and `delete' mutations.  `upsert' inserts a row
+or updates the existing row with the same primary key, which is the natural
+way to make a store match a record; `replace' and `update' signal when the
+identity is missing.  The source also exposes its primary key as the Data
+Controller `:item-key' capability, so selection identity needs no extra
+callback.  Mutation results include the operation, affected row count, and
+identity when applicable.  Every operation uses a short connection;
+controllers remain the owner of reactive state and lifecycle.  The legacy
+`:mutate' capability is exposed by default.  When MUTATE-V2 is non-nil, add
+the opt-in `:mutate-v2' capability that returns explicit commit/rollback
+certainty and an opaque reconciliation token."
   (unless (etaf-sqlite--database-p database)
     (signal 'wrong-type-argument
             (list 'etaf-sqlite-database-p database)))
-  (let ((capabilities
-         (list :name 'etaf-sqlite
-               :provider 'sqlite
-               :load (lambda (query page page-size)
-                       (etaf-sqlite--select-items database query page page-size))
-               :mutate (lambda (operation payload)
-                         (etaf-sqlite--mutate database operation payload)))))
+  (let* ((table (etaf-sqlite--database-table database))
+         (primary (etaf-sqlite--table-primary-key table))
+         (capabilities
+          (list :name 'etaf-sqlite
+                :provider 'sqlite
+                :item-key (and primary
+                               (lambda (record)
+                                 (etaf-sqlite--record-value record primary)))
+                :load (lambda (query page page-size)
+                        (etaf-sqlite--select-items database query page page-size))
+                :mutate (lambda (operation payload)
+                          (etaf-sqlite--mutate database operation payload)))))
     ;; Keep the typed wrapper opt-in.  The M4a additive path must not silently
     ;; change existing SQLite controllers from the v1 callback contract.
     (when mutate-v2

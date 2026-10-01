@@ -55,12 +55,16 @@
 ;; Return an `etaf-data-source' backed by DATABASE.
 ;;
 ;; The source accepts equality plist/alist queries and supports `insert',
-;; `replace', `update', and `delete' mutations.  Mutation results include the
-;; operation, affected row count, and inserted identity when applicable.  Every
-;; operation uses a short connection; controllers remain the owner of reactive
-;; state and lifecycle.  The legacy `:mutate' capability is exposed by default.
-;; When MUTATE-V2 is non-nil, add the opt-in `:mutate-v2' capability that returns
-;; explicit commit/rollback certainty and an opaque reconciliation token.
+;; `replace', `update', `upsert', and `delete' mutations.  `upsert' inserts a
+;; row or updates the existing row with the same primary key; `replace' and
+;; `update' signal when the identity is missing.  The source exposes its
+;; primary key as the Data Controller `:item-key' capability.  Mutation
+;; results include the operation, affected row count, and identity when
+;; applicable.  Every operation uses a short connection; controllers remain
+;; the owner of reactive state and lifecycle.  The legacy `:mutate' capability
+;; is exposed by default.  When MUTATE-V2 is non-nil, add the opt-in
+;; `:mutate-v2' capability that returns explicit commit/rollback certainty and
+;; an opaque reconciliation token.
 ;;
 ;; Function: etaf-sqlite-table (id columns &optional primary-key)
 ;;;###autoload (autoload 'etaf-sqlite-table "etaf-db" nil nil)

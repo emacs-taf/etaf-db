@@ -22,9 +22,12 @@ controller protocol; this package does not add an ORM.
 3. Pass `(etaf-sqlite-source database)` to `etaf-data-controller`.
 
 The source accepts equality plist/alist queries and paginated loads. It supports
-`insert`, `replace`, `update` and `delete`; mutation results include the operation,
-affected row count and inserted identity when applicable. Every operation uses a
-short-lived connection. Function docstrings specify constructor arguments.
+`insert`, `replace`, `update`, `upsert` and `delete`; mutation results include the
+operation, affected row count and inserted identity when applicable. `upsert`
+inserts a row or updates the existing row with the same primary key, while
+`replace` and `update` signal when the identity is missing. The source exposes
+its primary key as the Data Controller `:item-key` capability, so selection
+identity needs no extra callback. Every operation uses a short-lived connection. Function docstrings specify constructor arguments.
 
 The default source exposes `:mutate`. Explicit `:mutate-v2 t` adds commit-certainty
 results and an opaque reconciliation token. A known rollback is distinct from an

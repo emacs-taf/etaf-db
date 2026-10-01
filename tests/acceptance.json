@@ -52,6 +52,21 @@
       "name": "etaf-sqlite-v2-close-after-commit-reports-unknown",
       "file": "tests/etaf-sqlite-tests.el",
       "purpose": "A close signal after commit is also external uncertainty."
+    },
+    {
+      "name": "etaf-sqlite-source-upsert-inserts-and-updates",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "Upsert inserts or updates by primary key, reports the identity and changes, and does not duplicate the row."
+    },
+    {
+      "name": "etaf-sqlite-mutating-a-missing-row-signals",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "Update and replace signal for a missing identity instead of silently reporting zero changes."
+    },
+    {
+      "name": "etaf-sqlite-source-exposes-primary-key-identity",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "The source supplies the primary key as the Data Controller item identity without an explicit callback."
     }
   ]
 }
