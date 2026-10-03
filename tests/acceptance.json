@@ -67,6 +67,26 @@
       "name": "etaf-sqlite-source-exposes-primary-key-identity",
       "file": "tests/etaf-sqlite-tests.el",
       "purpose": "The source supplies the primary key as the Data Controller item identity without an explicit callback."
+    },
+    {
+      "name": "etaf-sqlite-mutate-batch-commits-atomically",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "A batch commits every statement together and rolls back on a failure."
+    },
+    {
+      "name": "etaf-sqlite-source-supports-data-batch-reconciliation",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "ETAF Data's batch API writes through SQLite and reloads the page once."
+    },
+    {
+      "name": "etaf-sqlite-initialize-adds-missing-nullable-columns",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "An existing database gains a nullable descriptor column in place."
+    },
+    {
+      "name": "etaf-sqlite-initialize-rejects-non-nullable-addition",
+      "file": "tests/etaf-sqlite-tests.el",
+      "purpose": "A missing declared non-nullable column refuses to be added silently."
     }
   ]
 }

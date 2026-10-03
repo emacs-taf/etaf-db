@@ -210,5 +210,118 @@ A controller created without an explicit :item-key uses the primary key."
                               controller '(:id 2 :name "Grace" :score 20)))))
         (etaf-data-stop controller)))))
 
+(ert-deftest etaf-sqlite-mutate-batch-commits-atomically ()
+  "A batch commits every statement together and rolls back on a failure."
+  (etaf-sqlite-test--with-database (database)
+    (let* ((source (etaf-sqlite-source database))
+           (batch (plist-get source :mutate-batch))
+           (results (funcall batch '((upsert (:id 3 :name "Alan" :score 30))
+                                     (upsert (:id 4 :name "Barbara" :score 40))))))
+      (should (equal '(3 4) (mapcar (lambda (result)
+                                      (plist-get result :id))
+                                    results)))
+      (should (equal '(1 1) (mapcar (lambda (result)
+                                      (plist-get result :changes))
+                                    results)))
+      (should-error
+       (funcall batch '((upsert (:id 5 :name "Edsger" :score 50))
+                        (replace (:id 99 :name "Nobody"))))
+       :type 'etaf-sqlite-error)
+      (let ((loaded (funcall (plist-get source :load) nil 1 10)))
+        (should (= 4 (plist-get loaded :total)))
+        (should-not (cl-find 5 (plist-get loaded :items)
+                             :key (lambda (row) (plist-get row :id))))))))
+
+(ert-deftest etaf-sqlite-source-supports-data-batch-reconciliation ()
+  "ETAF Data's batch API writes through SQLite and reloads the page once."
+  (etaf-sqlite-test--with-database (database)
+    (let* ((source (etaf-sqlite-source database))
+           (capabilities (etaf-data-source-capabilities source))
+           (load (plist-get capabilities :load))
+           (loads 0)
+           (counting (apply #'etaf-data-source
+                            (plist-put capabilities :load
+                                       (lambda (&rest args)
+                                         (cl-incf loads)
+                                         (apply load args)))))
+           (controller (etaf-data-controller counting :page-size 20
+                                             :auto-load t)))
+      (unwind-protect
+          (progn
+            (should (= 1 loads))
+            (let ((result (etaf-data-mutate-many
+                           controller
+                           '((upsert (:id 3 :name "Alan" :score 30))
+                             (upsert (:id 4 :name "Barbara" :score 40))))))
+              (should (= 2 loads))
+              (should (= 2 (plist-get result :changes)))
+              (should (= (etaf-value (etaf-data-total controller)) 4))))
+        (etaf-data-stop controller)))))
+
+(ert-deftest etaf-sqlite-initialize-adds-missing-nullable-columns ()
+  "An existing database gains a nullable descriptor column in place."
+  (let* ((directory (make-temp-file "etaf-sqlite-migrate-" t))
+         (file (expand-file-name "data.sqlite" directory))
+         (old (etaf-sqlite-database
+               file
+               (etaf-sqlite-table
+                'items
+                (list (etaf-sqlite-column :id "id" :type 'integer :primary t)
+                      (etaf-sqlite-column :name "name" :type 'text))
+                :id)))
+         (new (etaf-sqlite-database
+               file
+               (etaf-sqlite-table
+                'items
+                (list (etaf-sqlite-column :id "id" :type 'integer :primary t)
+                      (etaf-sqlite-column :name "name" :type 'text)
+                      (etaf-sqlite-column :tags "tags" :type 'text :nullable t))
+                :id))))
+    (unwind-protect
+        (progn
+          (etaf-sqlite-initialize old)
+          (funcall (plist-get (etaf-sqlite-source old) :mutate)
+                   'insert '(:id 1 :name "Ada"))
+          (etaf-sqlite-initialize new)
+          (let ((row (car (plist-get (funcall (plist-get (etaf-sqlite-source new)
+                                                        :load)
+                                              nil 1 10)
+                                     :items))))
+            (should (equal "Ada" (plist-get row :name)))
+            (should-not (plist-get row :tags)))
+          (funcall (plist-get (etaf-sqlite-source new) :mutate)
+                   'upsert '(:id 1 :name "Ada" :tags "compiler"))
+          (let ((row (car (plist-get (funcall (plist-get (etaf-sqlite-source new)
+                                                        :load)
+                                              nil 1 10)
+                                     :items))))
+            (should (equal "compiler" (plist-get row :tags)))))
+      (delete-directory directory t))))
+
+(ert-deftest etaf-sqlite-initialize-rejects-non-nullable-addition ()
+  "A missing declared non-nullable column refuses to be added silently."
+  (let* ((directory (make-temp-file "etaf-sqlite-migrate-" t))
+         (file (expand-file-name "data.sqlite" directory)))
+    (unwind-protect
+        (progn
+          (etaf-sqlite-initialize
+           (etaf-sqlite-database
+            file
+            (etaf-sqlite-table
+             'items
+             (list (etaf-sqlite-column :id "id" :type 'integer :primary t))
+             :id)))
+          (should-error
+           (etaf-sqlite-initialize
+            (etaf-sqlite-database
+             file
+             (etaf-sqlite-table
+              'items
+              (list (etaf-sqlite-column :id "id" :type 'integer :primary t)
+                    (etaf-sqlite-column :extra "extra" :type 'text))
+              :id)))
+           :type 'etaf-sqlite-schema-error))
+      (delete-directory directory t))))
+
 (provide 'etaf-sqlite-tests)
 ;;; etaf-sqlite-tests.el ends here

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- The SQLite source exposes an atomic `:mutate-batch' capability: one
+  transaction for a whole `(OPERATION PAYLOAD)` list, one result per operation,
+  and a full rollback when an operation signals.  `etaf-data-mutate-many'
+  consumes it and reconciles the Controller once for the batch.
+- `etaf-sqlite-initialize` reconciles an existing table with its descriptor:
+  missing nullable columns are added in place, while a missing primary or
+  declared non-nullable column signals `etaf-sqlite-schema-error' so schema
+  evolution cannot silently run against a half-matching table.
+
 ### Changed
 
 - The package entry is now `etaf-db`, matching the repository and its role as

@@ -45,6 +45,9 @@
 ;; Function: etaf-sqlite-initialize (database)
 ;;;###autoload (autoload 'etaf-sqlite-initialize "etaf-db" nil nil)
 ;; Create DATABASE's table if it does not exist and return DATABASE.
+;; When the table already exists, columns the descriptor has gained are added
+;; in place as long as they are nullable; a missing primary or declared
+;; non-nullable column signals `etaf-sqlite-schema-error'.
 ;;
 ;; Error: etaf-sqlite-schema-error
 ;; Invalid ETAF SQLite schema
@@ -60,7 +63,10 @@
 ;; `update' signal when the identity is missing.  The source exposes its
 ;; primary key as the Data Controller `:item-key' capability.  Mutation
 ;; results include the operation, affected row count, and identity when
-;; applicable.  Every operation uses a short connection; controllers remain
+;; applicable.  The source also exposes an atomic `:mutate-batch' capability:
+;; it receives a list of (OPERATION PAYLOAD) pairs, applies them in one
+;; transaction, and returns one result per operation; a signaled operation
+;; rolls the whole batch back.  Every operation uses a short connection; controllers remain
 ;; the owner of reactive state and lifecycle.  The legacy `:mutate' capability
 ;; is exposed by default.  When MUTATE-V2 is non-nil, add the opt-in
 ;; `:mutate-v2' capability that returns explicit commit/rollback certainty and
