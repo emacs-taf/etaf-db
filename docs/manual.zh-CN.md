@@ -39,4 +39,4 @@ reconciliation token。已确认回滚与结果未知不同：commit、rollback 
 
 完整示例见 [README](../README.zh-CN.md)。运行 `make test`，由
 `tests/etaf-sqlite-tests.el` 验证 schema、查询、变更、回滚、不确定性与 Controller 集成。
-数据源 capability 契约由 [ETAF 手册](https://gitea.gklazycat.heiyu.space/geekinney/etaf/src/branch/main/docs/manual.zh-CN.md) 维护。
+数据源 capability 契约由 [ETAF 手册](https://gitea.gklazycat.heiyu.space/emacs-taf/etaf/src/branch/main/docs/manual.zh-CN.md) 维护。

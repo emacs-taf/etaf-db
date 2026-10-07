@@ -2,7 +2,7 @@
 
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 ;; Author: ETAF contributors
-;; URL: https://gitea.gklazycat.heiyu.space/geekinney/etaf-db
+;; URL: https://gitea.gklazycat.heiyu.space/emacs-taf/etaf-db
 
 ;;; Commentary:
 

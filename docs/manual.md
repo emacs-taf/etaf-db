@@ -52,4 +52,4 @@ operations are signaled to the caller; no fallback storage engine is selected.
 See the complete [README example](../README.md). Run `make test` to check schema,
 queries, mutations, rollback/uncertainty and controller integration in
 `tests/etaf-sqlite-tests.el`. The provider capability contract belongs to
-[ETAF's manual](https://gitea.gklazycat.heiyu.space/geekinney/etaf/src/branch/main/docs/manual.md).
+[ETAF's manual](https://gitea.gklazycat.heiyu.space/emacs-taf/etaf/src/branch/main/docs/manual.md).
