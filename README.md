@@ -37,7 +37,7 @@ queries and synchronous mutations. Its source uses the existing ETAF Data Source
 contract. There is no separate database controller, ORM or backend dispatch protocol.
 Non-database integrations can implement the same source contract independently.
 
-See [the SQLite backend chapter](https://gitea.gklazycat.heiyu.space/emacs-taf/etaf-manual/src/branch/main/book/en/sqlite-backend.md) of the ETAF Reference Manual for supported queries, writes and lifecycle,
+See [the SQLite backend chapter](https://etaf.top/sqlite-backend/) of the ETAF Reference Manual for supported queries, writes and lifecycle,
 including the optional `:mutate-v2 t` source capability.
 
 ## Development

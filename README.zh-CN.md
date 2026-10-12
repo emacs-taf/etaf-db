@@ -36,7 +36,7 @@ ETAF Data Source 契约，不增加数据库专用 Controller、ORM 或后端分
 非数据库集成可以独立实现同一个数据源契约。
 
 支持的查询、写入、生命周期以及可选的 `:mutate-v2 t` 数据源能力见
-ETAF 参考手册的 [SQLite 后端一章](https://gitea.gklazycat.heiyu.space/emacs-taf/etaf-manual/src/branch/main/book/zh-CN/sqlite-backend.md)。
+ETAF 参考手册的 [SQLite 后端一章](https://etaf.top/zh-cn/sqlite-backend/)。
 
 ## 开发
 
