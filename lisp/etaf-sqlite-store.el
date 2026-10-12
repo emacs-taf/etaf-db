@@ -86,7 +86,8 @@
   "Declare a SQLite column with semantic ID and physical SQL-NAME.
 
 TYPE is one of `integer', `real', `text', `blob', or `any'.  NULLABLE allows
-SQL NULL values.  PRIMARY marks the table identity column.  SQL-NAME is
+SQL NULL values.  PRIMARY marks the column as the table's identity; pass its
+semantic ID as the table's PRIMARY-KEY so the source knows it.  SQL-NAME is
 validated once and never comes from a runtime query."
   (unless (etaf-sqlite--scalar-id-p id)
     (signal 'etaf-sqlite-schema-error
@@ -123,7 +124,9 @@ validated once and never comes from a runtime query."
 
 ;;;###autoload
 (defun etaf-sqlite-table (id columns &optional primary-key)
-  "Declare table ID from COLUMNS and optional PRIMARY-KEY semantic ID."
+  "Declare table ID from COLUMNS and optional PRIMARY-KEY semantic ID.
+Without it the table has no identity, and the mutations that need one are
+rejected."
   (unless (or (symbolp id) (stringp id))
     (signal 'etaf-sqlite-schema-error
             (list (format "Table ID must be a stable scalar: %S" id))))

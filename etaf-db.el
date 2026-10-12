@@ -27,7 +27,8 @@
 ;; Declare a SQLite column with semantic ID and physical SQL-NAME.
 ;;
 ;; TYPE is one of `integer', `real', `text', `blob', or `any'.  NULLABLE allows
-;; SQL NULL values.  PRIMARY marks the table identity column.  SQL-NAME is
+;; SQL NULL values.  PRIMARY marks the column as the table's identity; pass its
+;; semantic ID as the table's PRIMARY-KEY so the source knows it.  SQL-NAME is
 ;; validated once and never comes from a runtime query.
 ;;
 ;; Error: etaf-sqlite-commit-unknown
@@ -74,7 +75,8 @@
 ;;
 ;; Function: etaf-sqlite-table (id columns &optional primary-key)
 ;;;###autoload (autoload 'etaf-sqlite-table "etaf-db" nil nil)
-;; Declare table ID from COLUMNS and optional PRIMARY-KEY semantic ID.
+;; Declare table ID from COLUMNS and optional PRIMARY-KEY semantic ID; without
+;; it the table has no identity, and the mutations that need one are rejected.
 ;;
 ;; Error: etaf-sqlite-unavailable
 ;; SQLite is unavailable
