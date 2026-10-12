@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+
+- The package manual `docs/manual.md` is replaced by [the SQLite backend chapter](https://gitea.gklazycat.heiyu.space/emacs-taf/etaf-manual/src/branch/main/book/en/sqlite-backend.md) of the ETAF Reference Manual, which the README and the package Commentary link.
+
 ### Added
 
 - The SQLite source exposes an atomic `:mutate-batch' capability: one
